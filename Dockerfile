@@ -1,5 +1,16 @@
-FROM openjdk:8-jdk
+FROM anapsix/docker-oracle-java8
 
+#Install ffmpeg
+RUN \
+  sudo apt-get install -y software-properties-common python-software-properties && \
+  sudo add-apt-repository -y ppa:mc3man/trusty-media && \
+  sudo apt-get update && \
+  sudo apt-get -y dist-upgrade && \
+  sudo apt-get install -y ffmpeg
+
+RUN apt-get install -y unzip
+
+#Install curl
 RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 
 ENV JENKINS_HOME /var/jenkins_home
@@ -11,24 +22,24 @@ ARG uid=1000
 ARG gid=1000
 
 # Jenkins is run with user `jenkins`, uid = 1000
-# If you bind mount a volume from the host or a data container, 
+# If you bind mount a volume from the host or a data container,
 # ensure you use the same uid
 RUN groupadd -g ${gid} ${group} \
     && useradd -d "$JENKINS_HOME" -u ${uid} -g ${gid} -m -s /bin/bash ${user}
 
-# Jenkins home directory is a volume, so configuration and build history 
+# Jenkins home directory is a volume, so configuration and build history
 # can be persisted and survive image upgrades
 VOLUME /var/jenkins_home
 
-# `/usr/share/jenkins/ref/` contains all reference configuration we want 
-# to set on a fresh new installation. Use it to bundle additional plugins 
+# `/usr/share/jenkins/ref/` contains all reference configuration we want
+# to set on a fresh new installation. Use it to bundle additional plugins
 # or config file with your custom jenkins Docker image.
 RUN mkdir -p /usr/share/jenkins/ref/init.groovy.d
 
 ENV TINI_VERSION 0.13.1
 ENV TINI_SHA 0f78709a0e3c80e7c9119fdc32c2bc0f4cfc4cab
 
-# Use tini as subreaper in Docker container to adopt zombie processes 
+# Use tini as subreaper in Docker container to adopt zombie processes
 RUN curl -fsSL https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-static-amd64 -o /bin/tini && chmod +x /bin/tini \
   && echo "$TINI_SHA  /bin/tini" | sha1sum -c -
 
@@ -44,7 +55,7 @@ ARG JENKINS_SHA=1b65dc498ba7ab1f5cce64200b920a8716d90834
 # Can be used to customize where jenkins.war get downloaded from
 ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
 
-# could use ADD but this one does not check Last-Modified header neither does it allow to control checksum 
+# could use ADD but this one does not check Last-Modified header neither does it allow to control checksum
 # see https://github.com/docker/docker/issues/8331
 RUN curl -fsSL ${JENKINS_URL} -o /usr/share/jenkins/jenkins.war \
   && echo "${JENKINS_SHA}  /usr/share/jenkins/jenkins.war" | sha1sum -c -
@@ -60,6 +71,15 @@ EXPOSE 50000
 
 ENV COPY_REFERENCE_FILE_LOG $JENKINS_HOME/copy_reference_file.log
 
+RUN \
+  wget http://ftp.piotrkosoft.net/pub/mirrors/ftp.apache.org/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.zip && \
+  unzip apache-maven-3.3.9-bin.zip -d maven
+
+RUN mkdir -p $JENKINS_HOME/.m2/repository
+COPY google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar /usr/share/jenkins/google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar
+RUN chown jenkins:jenkins /usr/share/jenkins/google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar
+
+
 USER ${user}
 
 COPY jenkins-support /usr/local/bin/jenkins-support
@@ -69,3 +89,6 @@ ENTRYPOINT ["/bin/tini", "--", "/usr/local/bin/jenkins.sh"]
 # from a derived Dockerfile, can use `RUN plugins.sh active.txt` to setup /usr/share/jenkins/ref/plugins from a support bundle
 COPY plugins.sh /usr/local/bin/plugins.sh
 COPY install-plugins.sh /usr/local/bin/install-plugins.sh
+
+COPY google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar /var/jenkins_home/google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar
+#RUN /maven/apache-maven-3.3.9/bin/mvn install:install-file -Dfile=/var/jenkins_home/google-api-services-youtubePartner-v1-rev20160726-java-1.22.0.jar -DgroupId=com.google.apis -DartifactId=google-api-services-youtubePartner -Dversion=v1-rev20160726-1.22.0 -Dpackaging=jar -DlocalRepositoryPath=/var/jenkins_home/.m2/repository
